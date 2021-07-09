@@ -173,6 +173,7 @@ namespace Apache.NMS.AMQP.Provider.Amqp
                 cts.Token.Register(_ =>
                 {
                     var timeoutException = ExceptionSupport.GetTimeoutException(this.senderLink, $"The operation did not complete within the allocated time {session.Connection.Provider.SendTimeout}ms.");
+                    senderLink.Cancel(message); 
                     tcs.TrySetException(timeoutException);
                 }, null);
             }
