@@ -139,7 +139,7 @@ namespace NMS.AMQP.Test.Integration.Async
 
                 await connection.StartAsync();
 
-                Assert.True(originalConnected.WaitOne(TimeSpan.FromSeconds(5)), "Should connect to original peer");
+                Assert.True(originalConnected.WaitOne(TimeSpan.FromSeconds(10)), "Should connect to original peer");
 
                 // Post Failover Expectations of FinalPeer
                 finalPeer.ExpectSaslAnonymous();
@@ -149,7 +149,7 @@ namespace NMS.AMQP.Test.Integration.Async
 
                 await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
 
-                Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(5)), "Should connect to final peer");
+                Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(10)), "Should connect to final peer");
 
                 // Shut it down
                 finalPeer.ExpectClose();
@@ -564,7 +564,7 @@ namespace NMS.AMQP.Test.Integration.Async
 
                 ISession session = await connection.CreateSessionAsync();
 
-                Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(5)), "Should connect to final peer");
+                Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(10)), "Should connect to final peer");
 
                 await session.CloseAsync();
                 await connection.CloseAsync();
@@ -627,7 +627,7 @@ namespace NMS.AMQP.Test.Integration.Async
 
                 Assert.IsNull(await consumer.ReceiveAsync(TimeSpan.FromMilliseconds(500)));
 
-                Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(5)), "Should connect to final peer");
+                Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(10)), "Should connect to final peer");
 
                 await consumer.CloseAsync();
 
@@ -689,7 +689,7 @@ namespace NMS.AMQP.Test.Integration.Async
                 IQueue queue = await session.GetQueueAsync("myQueue");
                 IMessageProducer producer = await session.CreateProducerAsync(queue);
 
-                Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(5)), "Should connect to final peer");
+                Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(10)), "Should connect to final peer");
 
                 await producer.CloseAsync();
 
