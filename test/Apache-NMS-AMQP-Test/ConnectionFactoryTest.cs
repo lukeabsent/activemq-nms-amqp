@@ -153,7 +153,7 @@ namespace NMS.AMQP.Test
             Assert.Throws<NMSException>(() => factory.CreateConnection());
         }
         
-        [Test, Timeout(10000)]
+        [Test, Timeout(12000)]
         public void TestMaxNewConnectionRatePerSec()
         {
             double desiredRatePerSec = 5;
@@ -163,11 +163,11 @@ namespace NMS.AMQP.Test
                 "?failover.maxReconnectAttempts=0" +
                 "&nms.maxNewConnectionRatePerSec="+desiredRatePerSec);
 
-            int testTimeMs = 6000;
+            int testTimeMs = 5000;
 
             int mainCounter = 0;
 
-            Parallel.For(0, 8, (i) =>
+            Parallel.For(0, 4, (i) =>
             {
                 Stopwatch st = Stopwatch.StartNew();
                 IConnection connection = null;
