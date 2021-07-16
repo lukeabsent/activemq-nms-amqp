@@ -149,7 +149,7 @@ namespace NMS.AMQP.Test.Integration
 
                 connection.CreateSession(AcknowledgementMode.AutoAcknowledge);
 
-                Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(5)), "Should connect to final peer");
+                Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(10)), "Should connect to final peer");
 
                 // Shut it down
                 finalPeer.ExpectClose();
@@ -564,7 +564,7 @@ namespace NMS.AMQP.Test.Integration
 
                 ISession session = connection.CreateSession();
 
-                Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(5)), "Should connect to final peer");
+                Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(10)), "Should connect to final peer");
 
                 session.Close();
                 connection.Close();
@@ -627,7 +627,7 @@ namespace NMS.AMQP.Test.Integration
 
                 Assert.IsNull(consumer.Receive(TimeSpan.FromMilliseconds(500)));
 
-                Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(5)), "Should connect to final peer");
+                Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(10)), "Should connect to final peer");
 
                 consumer.Close();
 
@@ -689,7 +689,7 @@ namespace NMS.AMQP.Test.Integration
                 IQueue queue = session.GetQueue("myQueue");
                 IMessageProducer producer = session.CreateProducer(queue);
 
-                Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(5)), "Should connect to final peer");
+                Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(10)), "Should connect to final peer");
 
                 producer.Close();
 
@@ -931,7 +931,7 @@ namespace NMS.AMQP.Test.Integration
                 ISession session = connection.CreateSession(AcknowledgementMode.AutoAcknowledge);
                 ITemporaryTopic temporaryTopic = session.CreateTemporaryTopic();
                 
-                Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(5)), "Should connect to final peer");
+                Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(10)), "Should connect to final peer");
                 
                 // Delete the temporary Topic and close the session.
                 finalPeer.ExpectDetach(expectClosed: true, sendResponse: true, replyClosed: true);

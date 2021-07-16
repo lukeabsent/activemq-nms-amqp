@@ -16,19 +16,22 @@
  */
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Amqp.Framing;
 using Amqp.Types;
 using Apache.NMS;
+using Apache.NMS.AMQP;
 using Apache.NMS.AMQP.Util;
+using Moq;
 using NMS.AMQP.Test.TestAmqp;
+using NMS.AMQP.Test.TestAmqp.BasicTypes;
 using NUnit.Framework;
 
 namespace NMS.AMQP.Test.Integration.Async
 {
-    // Adapted from ProducerIntegrationTest to use NMSContext
     [TestFixture]
-    public class NMSProducerIntegrationTestAsync : IntegrationTestFixture
+    public class ProducerIntegrationTestAsync : IntegrationTestFixture
     {
         private const long TICKS_PER_MILLISECOND = 10000;
 
@@ -37,19 +40,19 @@ namespace NMS.AMQP.Test.Integration.Async
         {
             using (TestAmqpPeer testPeer = new TestAmqpPeer())
             {
-                var context = await base.EstablishNMSContextAsync(testPeer);
+                IConnection connection = await base.EstablishConnectionAsync(testPeer);
                 testPeer.ExpectBegin();
                 testPeer.ExpectSenderAttach();
 
-                IQueue queue = await context.GetQueueAsync("myQueue");
-                var producer = await context.CreateProducerAsync();
+                ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
+                IQueue queue = await session.GetQueueAsync("myQueue");
+                IMessageProducer producer = await session.CreateProducerAsync();
 
                 testPeer.ExpectDetach(expectClosed: true, sendResponse: true, replyClosed: true);
-                testPeer.ExpectEnd();
                 testPeer.ExpectClose();
 
                 await producer.CloseAsync();
-                await context.CloseAsync();
+                await connection.CloseAsync();
 
                 testPeer.WaitForAllMatchersToComplete(1000);
             }
@@ -60,27 +63,27 @@ namespace NMS.AMQP.Test.Integration.Async
         {
             using (TestAmqpPeer testPeer = new TestAmqpPeer())
             {
-                var context = await base.EstablishNMSContextAsync(testPeer);
+                IConnection connection = await base.EstablishConnectionAsync(testPeer);
                 testPeer.ExpectBegin();
                 testPeer.ExpectSenderAttach();
 
-                IQueue queue = await context.GetQueueAsync("myQueue");
-                var producer = await context.CreateProducerAsync();
+                ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
+                IQueue queue = await session.GetQueueAsync("myQueue");
+                IMessageProducer producer = await session.CreateProducerAsync(queue);
 
                 // Create and transfer a new message
                 String text = "myMessage";
                 testPeer.ExpectTransfer(x => Assert.AreEqual(text, (x.BodySection as AmqpValue).Value));
-                testPeer.ExpectEnd();
                 testPeer.ExpectClose();
 
-                ITextMessage message = await context.CreateTextMessageAsync(text);
-                await producer.SendAsync(queue, message);
+                ITextMessage message = await session.CreateTextMessageAsync(text);
+                await producer.SendAsync(message);
 
                 Assert.AreEqual(text, message.Text);
                 message.Text = text + text;
                 Assert.AreEqual(text + text, message.Text);
 
-                await context.CloseAsync();
+                await connection.CloseAsync();
 
                 testPeer.WaitForAllMatchersToComplete(1000);
             }
@@ -91,24 +94,24 @@ namespace NMS.AMQP.Test.Integration.Async
         {
             using (TestAmqpPeer testPeer = new TestAmqpPeer())
             {
-                var context = await base.EstablishNMSContextAsync(testPeer);
+                IConnection connection = await base.EstablishConnectionAsync(testPeer);
                 testPeer.ExpectBegin();
                 testPeer.ExpectSenderAttach();
 
-                IQueue queue = await context.GetQueueAsync("myQueue");
-                var producer = await context.CreateProducerAsync();
+                ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
+                IQueue queue = await session.GetQueueAsync("myQueue");
+                IMessageProducer producer = await session.CreateProducerAsync(queue);
 
                 // Create and transfer a new message
                 testPeer.ExpectTransfer(message => Assert.IsTrue(message.Header.Durable));
-                testPeer.ExpectEnd();
                 testPeer.ExpectClose();
 
-                ITextMessage textMessage = await context.CreateTextMessageAsync();
+                ITextMessage textMessage = await session.CreateTextMessageAsync();
 
-                await producer.SendAsync(queue, textMessage);
+                await producer.SendAsync(textMessage);
                 Assert.AreEqual(MsgDeliveryMode.Persistent, textMessage.NMSDeliveryMode);
 
-                await context.CloseAsync();
+                await connection.CloseAsync();
 
                 testPeer.WaitForAllMatchersToComplete(1000);
             }
@@ -119,29 +122,29 @@ namespace NMS.AMQP.Test.Integration.Async
         {
             using (TestAmqpPeer testPeer = new TestAmqpPeer())
             {
-                var context = await base.EstablishNMSContextAsync(testPeer);
+                IConnection connection = await base.EstablishConnectionAsync(testPeer);
                 testPeer.ExpectBegin();
                 testPeer.ExpectSenderAttach();
 
-                IQueue queue = await context.GetQueueAsync("myQueue");
-                var producer = await context.CreateProducerAsync();
+                ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
+                IQueue queue = await session.GetQueueAsync("myQueue");
+                IMessageProducer producer = await session.CreateProducerAsync(queue);
 
                 // Create and transfer a new message, explicitly setting the deliveryMode on the
                 // message (which applications shouldn't) to NON_PERSISTENT and sending it to check
                 // that the producer ignores this value and sends the message as PERSISTENT(/durable)
                 testPeer.ExpectTransfer(message => Assert.IsTrue(message.Header.Durable));
-                testPeer.ExpectEnd();
                 testPeer.ExpectClose();
 
-                ITextMessage textMessage = await context.CreateTextMessageAsync();
+                ITextMessage textMessage = await session.CreateTextMessageAsync();
                 textMessage.NMSDeliveryMode = MsgDeliveryMode.NonPersistent;
                 Assert.AreEqual(MsgDeliveryMode.NonPersistent, textMessage.NMSDeliveryMode);
 
-                await producer.SendAsync(queue, textMessage);
+                await producer.SendAsync(textMessage);
 
                 Assert.AreEqual(MsgDeliveryMode.Persistent, textMessage.NMSDeliveryMode);
 
-                await context.CloseAsync();
+                await connection.CloseAsync();
                 testPeer.WaitForAllMatchersToComplete(1000);
             }
         }
@@ -149,22 +152,58 @@ namespace NMS.AMQP.Test.Integration.Async
         [Test, Timeout(20_000)]
         public async Task TestSendingMessageNonPersistentProducerSetDurableFalse()
         {
-            await DoSendingMessageNonPersistentTestImpl(true);
+            await DoSendingMessageNonPersistentTestImpl(false, true, true);
+        }
+
+        [Test, Timeout(20_000)]
+        public async Task TestSendingMessageNonPersistentProducerSetDurableFalseAnonymousProducer()
+        {
+            await DoSendingMessageNonPersistentTestImpl(true, true, true);
+        }
+
+        [Test, Timeout(20_000)]
+        public async Task TestSendingMessageNonPersistentSendSetDurableFalse()
+        {
+            await DoSendingMessageNonPersistentTestImpl(false, true, false);
+        }
+
+        [Test, Timeout(20_000)]
+        public async Task TestSendingMessageNonPersistentSendSetDurableFalseAnonymousProducer()
+        {
+            await DoSendingMessageNonPersistentTestImpl(true, true, false);
         }
 
         [Test, Timeout(20_000)]
         public async Task TestSendingMessageNonPersistentProducerOmitsHeader()
         {
-            await DoSendingMessageNonPersistentTestImpl(false);
+            await DoSendingMessageNonPersistentTestImpl(false, false, true);
         }
 
-        private async Task DoSendingMessageNonPersistentTestImpl(bool setPriority)
+        [Test, Timeout(20_000)]
+        public async Task TestSendingMessageNonPersistentProducerOmitsHeaderAnonymousProducer()
+        {
+            await DoSendingMessageNonPersistentTestImpl(true, false, true);
+        }
+
+        [Test, Timeout(20_000)]
+        public async Task TestSendingMessageNonPersistentSendOmitsHeader()
+        {
+            await DoSendingMessageNonPersistentTestImpl(false, false, false);
+        }
+
+        [Test, Timeout(20_000)]
+        public async Task TestSendingMessageNonPersistentSendOmitsHeaderAnonymousProducer()
+        {
+            await DoSendingMessageNonPersistentTestImpl(true, false, false);
+        }
+
+        private async Task DoSendingMessageNonPersistentTestImpl(bool anonymousProducer, bool setPriority, bool setOnProducer)
         {
             using (TestAmqpPeer testPeer = new TestAmqpPeer())
             {
                 //Add capability to indicate support for ANONYMOUS-RELAY
-                Symbol[] serverCapabilities = {SymbolUtil.OPEN_CAPABILITY_ANONYMOUS_RELAY};
-                var context = await EstablishNMSContextAsync(testPeer, serverCapabilities: serverCapabilities);
+                Symbol[] serverCapabilities = { SymbolUtil.OPEN_CAPABILITY_ANONYMOUS_RELAY };
+                IConnection connection = await EstablishConnectionAsync(testPeer, serverCapabilities: serverCapabilities);
                 testPeer.ExpectBegin();
 
                 string queueName = "myQueue";
@@ -172,13 +211,22 @@ namespace NMS.AMQP.Test.Integration.Async
                 {
                     var target = t as Target;
                     Assert.IsNotNull(target);
+                    if (anonymousProducer)
+                        Assert.IsNull(target.Address);
+                    else
+                        Assert.AreEqual(queueName, target.Address);
                 };
-
+                
 
                 testPeer.ExpectSenderAttach(targetMatcher: targetMatcher, sourceMatcher: Assert.NotNull, senderSettled: false);
 
-                IQueue queue = await context.GetQueueAsync(queueName);
-                INMSProducer producer = await context.CreateProducerAsync();
+                ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
+                IQueue queue = await session.GetQueueAsync(queueName);
+                IMessageProducer producer = null;
+                if (anonymousProducer)
+                    producer = await session.CreateProducerAsync();
+                else
+                    producer = await session.CreateProducerAsync(queue);
 
                 byte priority = 5;
                 String text = "myMessage";
@@ -187,7 +235,7 @@ namespace NMS.AMQP.Test.Integration.Async
                         if (setPriority)
                         {
                             Assert.IsFalse(message.Header.Durable);
-                            Assert.AreEqual(priority, message.Header.Priority);
+                            Assert.AreEqual(5, message.Header.Priority);
                         }
 
                         Assert.AreEqual(text, (message.BodySection as AmqpValue).Value);
@@ -197,21 +245,44 @@ namespace NMS.AMQP.Test.Integration.Async
                     responseState: new Accepted(),
                     responseSettled: true);
 
-                ITextMessage textMessage = await context.CreateTextMessageAsync(text);
+                ITextMessage textMessage = await session.CreateTextMessageAsync(text);
 
-                producer.DeliveryMode = MsgDeliveryMode.NonPersistent;
-                if (setPriority)
-                    producer.Priority = (MsgPriority) priority;
+                if (setOnProducer)
+                {
+                    producer.DeliveryMode = MsgDeliveryMode.NonPersistent;
+                    if (setPriority)
+                        producer.Priority = (MsgPriority) 5;
 
-                await producer.SendAsync(queue, textMessage);
+                    if (anonymousProducer)
+                        await producer.SendAsync(queue, textMessage);
+                    else
+                        await producer.SendAsync(textMessage);
+                }
+                else
+                {
+                    if (anonymousProducer)
+                    {
+                        await producer.SendAsync(destination: queue,
+                            message: textMessage,
+                            deliveryMode: MsgDeliveryMode.NonPersistent,
+                            priority: setPriority ? (MsgPriority) priority : NMSConstants.defaultPriority,
+                            timeToLive: NMSConstants.defaultTimeToLive);
+                    }
+                    else
+                    {
+                        await producer.SendAsync(message: textMessage,
+                            deliveryMode: MsgDeliveryMode.NonPersistent,
+                            priority: setPriority ? (MsgPriority) priority : NMSConstants.defaultPriority,
+                            timeToLive: NMSConstants.defaultTimeToLive);
+                    }
+                }
 
                 Assert.AreEqual(MsgDeliveryMode.NonPersistent, textMessage.NMSDeliveryMode, "Should have NonPersistent delivery mode set");
 
                 testPeer.WaitForAllMatchersToComplete(1000);
 
-                testPeer.ExpectEnd();
                 testPeer.ExpectClose();
-                await context.CloseAsync();
+                await connection.CloseAsync();
 
                 testPeer.WaitForAllMatchersToComplete(1000);
             }
@@ -222,27 +293,27 @@ namespace NMS.AMQP.Test.Integration.Async
         {
             using (TestAmqpPeer testPeer = new TestAmqpPeer())
             {
-                var context = await EstablishNMSContextAsync(testPeer);
+                IConnection connection = await EstablishConnectionAsync(testPeer);
                 testPeer.ExpectBegin();
                 testPeer.ExpectSenderAttach();
 
-                IQueue destination = await context.GetQueueAsync("myQueue");
-                var producer = await context.CreateProducerAsync();
+                ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
+                IQueue destination = await session.GetQueueAsync("myQueue");
+                IMessageProducer producer = await session.CreateProducerAsync(destination);
 
                 string text = "myMessage";
-                ITextMessage message = await context.CreateTextMessageAsync(text);
+                ITextMessage message = await session.CreateTextMessageAsync(text);
 
                 testPeer.ExpectTransfer(m => Assert.AreEqual(text, (m.BodySection as AmqpValue).Value));
-                testPeer.ExpectEnd();
                 testPeer.ExpectClose();
 
                 Assert.IsNull(message.NMSDestination, "Should not yet have a NMSDestination");
 
-                await producer.SendAsync(destination, message);
+                await producer.SendAsync(message);
 
                 Assert.AreEqual(destination, message.NMSDestination, "Should have had NMSDestination set");
 
-                await context.CloseAsync();
+                await connection.CloseAsync();
 
                 testPeer.WaitForAllMatchersToComplete(1000);
             }
@@ -253,12 +324,13 @@ namespace NMS.AMQP.Test.Integration.Async
         {
             using (TestAmqpPeer testPeer = new TestAmqpPeer())
             {
-                var context = await EstablishNMSContextAsync(testPeer);
+                IConnection connection = await EstablishConnectionAsync(testPeer);
                 testPeer.ExpectBegin();
                 testPeer.ExpectSenderAttach();
 
-                IQueue destination = await context.GetQueueAsync("myQueue");
-                var producer = await context.CreateProducerAsync();
+                ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
+                IQueue destination = await session.GetQueueAsync("myQueue");
+                IMessageProducer producer = await session.CreateProducerAsync(destination);
 
                 // Create matcher to expect the absolute-expiry-time field of the properties section to
                 // be set to a value greater than 'now'+ttl, within a delta.
@@ -275,14 +347,13 @@ namespace NMS.AMQP.Test.Integration.Async
                     Assert.AreEqual(text, (m.BodySection as AmqpValue).Value);
                 });
 
-                ITextMessage message = await context.CreateTextMessageAsync(text);
-                await producer.SendAsync(destination, message);
+                ITextMessage message = await session.CreateTextMessageAsync(text);
+                await producer.SendAsync(message);
 
                 testPeer.WaitForAllMatchersToComplete(1000);
 
-                testPeer.ExpectEnd();
                 testPeer.ExpectClose();
-                await context.CloseAsync();
+                await connection.CloseAsync();
 
                 testPeer.WaitForAllMatchersToComplete(1000);
             }
@@ -293,12 +364,13 @@ namespace NMS.AMQP.Test.Integration.Async
         {
             using (TestAmqpPeer testPeer = new TestAmqpPeer())
             {
-                var context = await EstablishNMSContextAsync(testPeer);
+                IConnection connection = await EstablishConnectionAsync(testPeer);
                 testPeer.ExpectBegin();
                 testPeer.ExpectSenderAttach();
 
-                IQueue destination = await context.GetQueueAsync("myQueue");
-                var producer = await context.CreateProducerAsync();
+                ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
+                IQueue destination = await session.GetQueueAsync("myQueue");
+                IMessageProducer producer = await session.CreateProducerAsync(destination);
 
                 uint ttl = 100_000;
                 DateTime currentTime = DateTime.UtcNow;
@@ -317,48 +389,44 @@ namespace NMS.AMQP.Test.Integration.Async
                     Assert.AreEqual(text, (m.BodySection as AmqpValue).Value);
                 });
 
-                ITextMessage message = await context.CreateTextMessageAsync(text);
-                producer.TimeToLive = TimeSpan.FromMilliseconds(ttl);
-                producer.Priority = NMSConstants.defaultPriority;
-                producer.DeliveryMode = NMSConstants.defaultDeliveryMode;
-                await producer.SendAsync(destination, message);
+                ITextMessage message = await session.CreateTextMessageAsync(text);
+                await producer.SendAsync(message, NMSConstants.defaultDeliveryMode, NMSConstants.defaultPriority, TimeSpan.FromMilliseconds(ttl));
 
                 testPeer.WaitForAllMatchersToComplete(1000);
 
-                testPeer.ExpectEnd();
                 testPeer.ExpectClose();
-                await context.CloseAsync();
+                await connection.CloseAsync();
 
                 testPeer.WaitForAllMatchersToComplete(1000);
             }
         }
-
+        
         [Test, Timeout(20_000)]
         public async Task TestMessagesAreProducedWithProperDefaultPriorityWhenNoPrioritySpecified()
         {
             using (TestAmqpPeer testPeer = new TestAmqpPeer())
             {
-                var context = await EstablishNMSContextAsync(testPeer);
+                IConnection connection = await EstablishConnectionAsync(testPeer);
                 testPeer.ExpectBegin();
                 testPeer.ExpectSenderAttach();
 
-                IQueue destination = await context.GetQueueAsync("myQueue");
-                var producer = await context.CreateProducerAsync();
+                ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
+                IQueue destination = await session.GetQueueAsync("myQueue");
+                IMessageProducer producer = await session.CreateProducerAsync(destination);
 
                 byte priority = 4;
 
                 testPeer.ExpectTransfer(m => Assert.AreEqual(priority, m.Header.Priority));
-                testPeer.ExpectEnd();
                 testPeer.ExpectClose();
 
-                ITextMessage message = await context.CreateTextMessageAsync();
+                ITextMessage message = await session.CreateTextMessageAsync();
                 Assert.AreEqual(MsgPriority.BelowNormal, message.NMSPriority);
 
-                await producer.SendAsync(destination, message);
+                await producer.SendAsync(message);
 
                 Assert.AreEqual((MsgPriority) priority, message.NMSPriority);
 
-                await context.CloseAsync();
+                await connection.CloseAsync();
 
                 testPeer.WaitForAllMatchersToComplete(1000);
             }
@@ -369,30 +437,27 @@ namespace NMS.AMQP.Test.Integration.Async
         {
             using (TestAmqpPeer testPeer = new TestAmqpPeer())
             {
-                var context = await EstablishNMSContextAsync(testPeer);
+                IConnection connection = await EstablishConnectionAsync(testPeer);
                 testPeer.ExpectBegin();
                 testPeer.ExpectSenderAttach();
 
-                IQueue destination = await context.GetQueueAsync("myQueue");
-                var producer = await context.CreateProducerAsync();
+                ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
+                IQueue destination = await session.GetQueueAsync("myQueue");
+                IMessageProducer producer = await session.CreateProducerAsync(destination);
 
                 byte priority = 9;
 
                 testPeer.ExpectTransfer(m => Assert.AreEqual(priority, m.Header.Priority));
-                testPeer.ExpectEnd();
                 testPeer.ExpectClose();
 
-                ITextMessage message = await context.CreateTextMessageAsync();
+                ITextMessage message = await session.CreateTextMessageAsync();
                 Assert.AreEqual(MsgPriority.BelowNormal, message.NMSPriority);
 
-                producer.DeliveryMode = MsgDeliveryMode.Persistent;
-                producer.Priority = (MsgPriority) priority;
-                producer.TimeToLive = NMSConstants.defaultTimeToLive;
-                await producer.SendAsync(destination, message);
+                await producer.SendAsync(message, MsgDeliveryMode.Persistent, (MsgPriority) priority, NMSConstants.defaultTimeToLive);
 
                 Assert.AreEqual((MsgPriority) priority, message.NMSPriority);
 
-                await context.CloseAsync();
+                await connection.CloseAsync();
 
                 testPeer.WaitForAllMatchersToComplete(1000);
             }
@@ -403,12 +468,13 @@ namespace NMS.AMQP.Test.Integration.Async
         {
             using (TestAmqpPeer testPeer = new TestAmqpPeer())
             {
-                var context = await EstablishNMSContextAsync(testPeer);
+                IConnection connection = await EstablishConnectionAsync(testPeer);
                 testPeer.ExpectBegin();
                 testPeer.ExpectSenderAttach();
 
-                IQueue destination = await context.GetQueueAsync("myQueue");
-                var producer = await context.CreateProducerAsync();
+                ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
+                IQueue destination = await session.GetQueueAsync("myQueue");
+                IMessageProducer producer = await session.CreateProducerAsync(destination);
 
                 string text = "myMessage";
                 string actualMessageId = null;
@@ -418,19 +484,18 @@ namespace NMS.AMQP.Test.Integration.Async
                     Assert.IsNotEmpty(m.Properties.MessageId);
                     actualMessageId = m.Properties.MessageId;
                 });
-                testPeer.ExpectEnd();
                 testPeer.ExpectClose();
 
-                ITextMessage message = await context.CreateTextMessageAsync(text);
+                ITextMessage message = await session.CreateTextMessageAsync(text);
                 Assert.IsNull(message.NMSMessageId, "NMSMessageId should not yet be set");
 
-                await producer.SendAsync(destination, message);
+                await producer.SendAsync(message);
 
                 Assert.IsNotNull(message.NMSMessageId);
                 Assert.IsNotEmpty(message.NMSMessageId, "NMSMessageId should be set");
                 Assert.IsTrue(message.NMSMessageId.StartsWith("ID:"), "MMS 'ID:' prefix not found");
 
-                await context.CloseAsync();
+                await connection.CloseAsync();
 
                 testPeer.WaitForAllMatchersToComplete(1000);
                 // Get the value that was actually transmitted/received, verify it is a string, compare to what we have locally
@@ -454,12 +519,13 @@ namespace NMS.AMQP.Test.Integration.Async
         {
             using (TestAmqpPeer testPeer = new TestAmqpPeer())
             {
-                var context = await EstablishNMSContextAsync(testPeer);
+                IConnection connection = await EstablishConnectionAsync(testPeer);
                 testPeer.ExpectBegin();
                 testPeer.ExpectSenderAttach();
 
-                IQueue destination = await context.GetQueueAsync("myQueue");
-                var producer = await context.CreateProducerAsync();
+                ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
+                IQueue destination = await session.GetQueueAsync("myQueue");
+                IMessageProducer producer = await session.CreateProducerAsync(destination);
 
                 string text = "myMessage";
                 testPeer.ExpectTransfer(m =>
@@ -468,10 +534,9 @@ namespace NMS.AMQP.Test.Integration.Async
                     Assert.IsNull(m.Properties.MessageId); // Check there is no message-id value;
                     Assert.AreEqual(text, (m.BodySection as AmqpValue).Value);
                 });
-                testPeer.ExpectEnd();
                 testPeer.ExpectClose();
 
-                ITextMessage message = await context.CreateTextMessageAsync(text);
+                ITextMessage message = await session.CreateTextMessageAsync(text);
 
                 Assert.IsNull(message.NMSMessageId, "NMSMessageId should not yet be set");
 
@@ -484,78 +549,77 @@ namespace NMS.AMQP.Test.Integration.Async
 
                 producer.DisableMessageID = true;
 
-                await producer.SendAsync(destination, message);
+                await producer.SendAsync(message);
 
                 Assert.IsNull(message.NMSMessageId, "NMSMessageID should be null");
 
-                await context.CloseAsync();
+                await connection.CloseAsync();
 
                 testPeer.WaitForAllMatchersToComplete(2000);
             }
         }
 
-        // TODO No connection listener in nms context
-        // [Test, Timeout(20_000)]
-        // public async Task TestRemotelyCloseProducer()
-        // {
-        //     string breadCrumb = "ErrorMessageBreadCrumb";
-        //
-        //     ManualResetEvent producerClosed = new ManualResetEvent(false);
-        //     Mock<INmsConnectionListener> mockConnectionListener = new Mock<INmsConnectionListener>();
-        //     mockConnectionListener
-        //         .Setup(listener => listener.OnProducerClosed(It.IsAny<NmsMessageProducer>(), It.IsAny<Exception>()))
-        //         .Callback(() => { producerClosed.Set(); });
-        //
-        //     using (TestAmqpPeer testPeer = new TestAmqpPeer())
-        //     {
-        //         NmsContext context = (NmsContext) EstablishNMSContext(testPeer);
-        //         context.AddConnectionListener(mockConnectionListener.Object);
-        //
-        //         testPeer.ExpectBegin();
-        //         ISession session = context.CreateSession(AcknowledgementMode.AutoAcknowledge);
-        //
-        //         // Create a producer, then remotely end it afterwards.
-        //         testPeer.ExpectSenderAttach();
-        //         testPeer.RemotelyDetachLastOpenedLinkOnLastOpenedSession(expectDetachResponse: true, closed: true, errorType: AmqpError.RESOURCE_DELETED, breadCrumb, delayBeforeSend: 10);
-        //
-        //         IQueue destination = session.GetQueue("myQueue");
-        //         IMessageProducer producer = session.CreateProducer(destination);
-        //
-        //         // Verify the producer gets marked closed
-        //         testPeer.WaitForAllMatchersToComplete(1000);
-        //
-        //         Assert.True(producerClosed.WaitOne(TimeSpan.FromMilliseconds(1000)), "Producer closed callback didn't trigger");
-        //         Assert.That(() => producer.DisableMessageID, Throws.Exception.InstanceOf<IllegalStateException>(), "Producer never closed");
-        //
-        //         // Try closing it explicitly, should effectively no-op in client.
-        //         // The test peer will throw during close if it sends anything.
-        //         producer.Close();
-        //     }
-        // }
+        [Test, Timeout(20_000)]
+        public async Task TestRemotelyCloseProducer()
+        {
+            string breadCrumb = "ErrorMessageBreadCrumb";
+
+            ManualResetEvent producerClosed = new ManualResetEvent(false);
+            Mock<INmsConnectionListener> mockConnectionListener = new Mock<INmsConnectionListener>();
+            mockConnectionListener
+                .Setup(listener => listener.OnProducerClosed(It.IsAny<NmsMessageProducer>(), It.IsAny<Exception>()))
+                .Callback(() => { producerClosed.Set(); });
+
+            using (TestAmqpPeer testPeer = new TestAmqpPeer())
+            {
+                NmsConnection connection = (NmsConnection) await EstablishConnectionAsync(testPeer);
+                connection.AddConnectionListener(mockConnectionListener.Object);
+
+                testPeer.ExpectBegin();
+                ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
+
+                // Create a producer, then remotely end it afterwards.
+                testPeer.ExpectSenderAttach();
+                testPeer.RemotelyDetachLastOpenedLinkOnLastOpenedSession(expectDetachResponse: true, closed: true, errorType: AmqpError.RESOURCE_DELETED, breadCrumb, delayBeforeSend: 10);
+
+                IQueue destination = await session.GetQueueAsync("myQueue");
+                IMessageProducer producer = await session.CreateProducerAsync(destination);
+
+                // Verify the producer gets marked closed
+                testPeer.WaitForAllMatchersToComplete(1000);
+
+                Assert.True(producerClosed.WaitOne(TimeSpan.FromMilliseconds(1000)), "Producer closed callback didn't trigger");
+                Assert.That(() => producer.DisableMessageID, Throws.Exception.InstanceOf<IllegalStateException>(), "Producer never closed");
+
+                // Try closing it explicitly, should effectively no-op in client.
+                // The test peer will throw during close if it sends anything.
+                await producer.CloseAsync();
+            }
+        }
 
         [Test, Timeout(20_000)]
         public async Task TestSendWhenLinkCreditIsZeroAndTimeout()
         {
             using (TestAmqpPeer testPeer = new TestAmqpPeer())
             {
-                var context = await EstablishNMSContextAsync(testPeer, optionsString: "nms.sendTimeout=500");
+                IConnection connection = await EstablishConnectionAsync(testPeer, optionsString: "nms.sendTimeout=500");
                 testPeer.ExpectBegin();
 
-                IQueue queue = await context.GetQueueAsync("myQueue");
+                ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
+                IQueue queue = await session.GetQueueAsync("myQueue");
 
-                ITextMessage message = await context.CreateTextMessageAsync("text");
+                ITextMessage message = await session.CreateTextMessageAsync("text");
 
                 // Expect the producer to attach. Don't send any credit so that the client will
                 // block on a send and we can test our timeouts.
                 testPeer.ExpectSenderAttachWithoutGrantingCredit();
-                testPeer.ExpectEnd();
                 testPeer.ExpectClose();
 
-                var producer = await context.CreateProducerAsync();
+                IMessageProducer producer = await session.CreateProducerAsync(queue);
 
-                Assert.CatchAsync<Exception>(async () => await producer.SendAsync(queue, message), "Send should time out.");
+                Assert.CatchAsync<Exception>(async () => await producer.SendAsync(message), "Send should time out.");
 
-                await context.CloseAsync();
+                await connection.CloseAsync();
 
                 testPeer.WaitForAllMatchersToComplete(1000);
             }
@@ -566,26 +630,30 @@ namespace NMS.AMQP.Test.Integration.Async
         {
             using (TestAmqpPeer testPeer = new TestAmqpPeer())
             {
-                var context = await EstablishNMSContextAsync(testPeer, optionsString: "nms.sendTimeout=500");
+                IConnection connection = await EstablishConnectionAsync(testPeer, optionsString: "nms.sendTimeout=500");
                 testPeer.ExpectBegin();
 
-                IQueue queue = await context.GetQueueAsync("myQueue");
+                ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
+                IQueue queue = await session.GetQueueAsync("myQueue");
 
-                ITextMessage message = await context.CreateTextMessageAsync("text");
+                ITextMessage message = await session.CreateTextMessageAsync("text");
 
                 // Expect the producer to attach and grant it some credit, it should send
                 // a transfer which we will not send any response for which should cause the
                 // send operation to time out.
                 testPeer.ExpectSenderAttach();
                 testPeer.ExpectTransferButDoNotRespond(messageMatcher: Assert.NotNull);
-                testPeer.ExpectEnd();
+                testPeer.ExpectDisposition(settled: true, state =>
+                {
+                    Assert.AreEqual(state.Descriptor.Code, MessageSupport.RELEASED_INSTANCE.Descriptor.Code);
+                });
                 testPeer.ExpectClose();
 
-                var producer = await context.CreateProducerAsync();
+                IMessageProducer producer = await session.CreateProducerAsync(queue);
 
-                Assert.CatchAsync<Exception>(async () => await producer.SendAsync(queue, message), "Send should time out.");
+                Assert.CatchAsync<Exception>(async () => await producer.SendAsync(message), "Send should time out.");
 
-                await context.CloseAsync();
+                await connection.CloseAsync();
 
                 testPeer.WaitForAllMatchersToComplete(1000);
             }
@@ -596,17 +664,18 @@ namespace NMS.AMQP.Test.Integration.Async
         {
             using (TestAmqpPeer testPeer = new TestAmqpPeer())
             {
-                var context = await EstablishNMSContextAsync(testPeer);
+                IConnection connection = await EstablishConnectionAsync(testPeer);
 
                 testPeer.ExpectBegin();
                 testPeer.ExpectSenderAttach();
 
-                IQueue destination = await context.GetQueueAsync("myQueue");
-                var producer = await context.CreateProducerAsync();
+                ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
+                IQueue destination = await session.GetQueueAsync("myQueue");
+                IMessageProducer producer = await session.CreateProducerAsync(destination);
 
                 testPeer.ExpectTransfer(Assert.IsNotNull);
 
-                await producer.SendAsync(destination, await context.CreateMessageAsync());
+                await producer.SendAsync(await session.CreateMessageAsync());
 
                 testPeer.ExpectDetach(expectClosed: true, sendResponse: true, replyClosed: true);
                 await producer.CloseAsync();
@@ -620,45 +689,46 @@ namespace NMS.AMQP.Test.Integration.Async
         {
             using (TestAmqpPeer testPeer = new TestAmqpPeer())
             {
-                var context = await EstablishNMSContextAsync(testPeer);
-                await context.StartAsync();
+                IConnection connection = await EstablishConnectionAsync(testPeer);
+                await connection.StartAsync();
 
                 testPeer.ExpectBegin();
                 testPeer.ExpectSenderAttach();
 
-                IQueue destination = await context.GetQueueAsync("myQueue");
-                var producer = await context.CreateProducerAsync();
+                ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
+                IQueue destination = await session.GetQueueAsync("myQueue");
+                IMessageProducer producer = await session.CreateProducerAsync(destination);
 
                 testPeer.ExpectTransfer(Assert.IsNotNull);
 
-                await context.StopAsync();
+                await connection.StopAsync();
 
-                await producer.SendAsync(destination, await context.CreateMessageAsync());
+                await producer.SendAsync(await session.CreateMessageAsync());
 
                 testPeer.ExpectDetach(expectClosed: true, sendResponse: true, replyClosed: true);
-                testPeer.ExpectEnd();
                 testPeer.ExpectClose();
 
                 await producer.CloseAsync();
-                await context.CloseAsync();
+                await connection.CloseAsync();
 
                 testPeer.WaitForAllMatchersToComplete(1000);
             }
         }
-
+  
         [Test, Timeout(20_000)]
         public async Task TestSendingMessagePersistentSetsBatchableFalse()
         {
             using (TestAmqpPeer testPeer = new TestAmqpPeer())
             {
-                var context = await EstablishNMSContextAsync(testPeer);
-                await context.StartAsync();
+                IConnection connection = await EstablishConnectionAsync(testPeer);
+                await connection.StartAsync();
 
                 testPeer.ExpectBegin();
                 testPeer.ExpectSenderAttach();
 
-                IQueue destination = await context.GetQueueAsync("myQueue");
-                var producer = await context.CreateProducerAsync();
+                ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
+                IQueue destination = await session.GetQueueAsync("myQueue");
+                IMessageProducer producer = await session.CreateProducerAsync(destination);
                 testPeer.ExpectTransfer(messageMatcher: Assert.IsNotNull,
                     stateMatcher: Assert.IsNull,
                     settled: false,
@@ -667,17 +737,13 @@ namespace NMS.AMQP.Test.Integration.Async
                     responseSettled: true,
                     batchable: false);
 
-                IMessage message = await context.CreateMessageAsync();
-                producer.DeliveryMode = MsgDeliveryMode.Persistent;
-                producer.Priority = MsgPriority.Normal;
-                producer.TimeToLive = NMSConstants.defaultTimeToLive;
-                await producer.SendAsync(destination, message);
-
+                IMessage message = await session.CreateMessageAsync();
+                await producer.SendAsync(message: message, deliveryMode: MsgDeliveryMode.Persistent, MsgPriority.Normal, NMSConstants.defaultTimeToLive);
+                
                 testPeer.WaitForAllMatchersToComplete(1000);
 
-                testPeer.ExpectEnd();
                 testPeer.ExpectClose();
-                await context.CloseAsync();
+                await connection.CloseAsync();
 
                 testPeer.WaitForAllMatchersToComplete(1000);
             }
@@ -688,14 +754,15 @@ namespace NMS.AMQP.Test.Integration.Async
         {
             using (TestAmqpPeer testPeer = new TestAmqpPeer())
             {
-                var context = await EstablishNMSContextAsync(testPeer);
-                await context.StartAsync();
+                IConnection connection = await EstablishConnectionAsync(testPeer);
+                await connection.StartAsync();
 
                 testPeer.ExpectBegin();
                 testPeer.ExpectSenderAttach();
 
-                IQueue destination = await context.GetQueueAsync("myQueue");
-                var producer = await context.CreateProducerAsync();
+                ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
+                IQueue destination = await session.GetQueueAsync("myQueue");
+                IMessageProducer producer = await session.CreateProducerAsync(destination);
                 testPeer.ExpectTransfer(messageMatcher: Assert.IsNotNull,
                     stateMatcher: Assert.IsNull,
                     settled: false,
@@ -704,17 +771,13 @@ namespace NMS.AMQP.Test.Integration.Async
                     responseSettled: true,
                     batchable: false);
 
-                IMessage message = await context.CreateMessageAsync();
-                producer.DeliveryMode = MsgDeliveryMode.NonPersistent;
-                producer.Priority = MsgPriority.Normal;
-                producer.TimeToLive = NMSConstants.defaultTimeToLive;
-                await producer.SendAsync(destination, message);
-
+                IMessage message = await session.CreateMessageAsync();
+                await producer.SendAsync(message: message, deliveryMode: MsgDeliveryMode.NonPersistent, MsgPriority.Normal, NMSConstants.defaultTimeToLive);
+                
                 testPeer.WaitForAllMatchersToComplete(1000);
 
-                testPeer.ExpectEnd();
                 testPeer.ExpectClose();
-                await context.CloseAsync();
+                await connection.CloseAsync();
 
                 testPeer.WaitForAllMatchersToComplete(1000);
             }
