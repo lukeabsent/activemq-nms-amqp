@@ -900,6 +900,19 @@ namespace NMS.AMQP.Test.Integration
                 originalPeer.ExpectTempTopicCreationAttach(dynamicAddress1);
                 originalPeer.DropAfterLastMatcher();
                 
+                // Post Failover Expectations of FinalPeer
+                finalPeer.ExpectSaslAnonymous();
+                finalPeer.ExpectOpen();
+                finalPeer.ExpectBegin();
+                String dynamicAddress2 = "myTempTopicAddress2";
+                finalPeer.ExpectTempTopicCreationAttach(dynamicAddress2);
+                // Session is recreated after previous temporary destinations are recreated on failover.
+                finalPeer.ExpectBegin();
+                // Delete the temporary Topic and close the session.
+                finalPeer.ExpectDetach(expectClosed: true, sendResponse: true, replyClosed: true);
+                finalPeer.ExpectEnd();
+                finalPeer.ExpectClose();
+                
                 NmsConnection connection = EstablishAnonymousConnection(originalPeer, finalPeer);
 
                 Mock<INmsConnectionListener> connectionListener = new Mock<INmsConnectionListener>();
@@ -918,31 +931,18 @@ namespace NMS.AMQP.Test.Integration
                 
                 Assert.True(originalConnected.WaitOne(TimeSpan.FromSeconds(5)), "Should connect to original peer");
                 
-                // Post Failover Expectations of FinalPeer
-                finalPeer.ExpectSaslAnonymous();
-                finalPeer.ExpectOpen();
-                finalPeer.ExpectBegin();
-                String dynamicAddress2 = "myTempTopicAddress2";
-                finalPeer.ExpectTempTopicCreationAttach(dynamicAddress2);
-                
-                // Session is recreated after previous temporary destinations are recreated on failover.
-                finalPeer.ExpectBegin();
-                
                 ISession session = connection.CreateSession(AcknowledgementMode.AutoAcknowledge);
                 ITemporaryTopic temporaryTopic = session.CreateTemporaryTopic();
                 
                 Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(10)), "Should connect to final peer");
                 
-                // Delete the temporary Topic and close the session.
-                finalPeer.ExpectDetach(expectClosed: true, sendResponse: true, replyClosed: true);
-                finalPeer.ExpectEnd();
+                
                 
                 temporaryTopic.Delete();
                 
                 session.Close();
                 
-                // Shut it down
-                finalPeer.ExpectClose();
+               
                 connection.Close();
                 
                 originalPeer.WaitForAllMatchersToComplete(2000);

@@ -900,16 +900,28 @@ namespace NMS.AMQP.Test.Integration.Async
                 originalPeer.ExpectTempTopicCreationAttach(dynamicAddress1);
                 originalPeer.DropAfterLastMatcher();
                 
-                NmsConnection connection = await EstablishAnonymousConnection(originalPeer, finalPeer);
+                finalPeer.ExpectSaslAnonymous();
+                finalPeer.ExpectOpen();
+                finalPeer.ExpectBegin();
+                String dynamicAddress2 = "myTempTopicAddress2";
+                finalPeer.ExpectTempTopicCreationAttach(dynamicAddress2);
+                // Session is recreated after previous temporary destinations are recreated on failover.
+                finalPeer.ExpectBegin();
+                // Delete the temporary Topic and close the session.
+                finalPeer.ExpectDetach(expectClosed: true, sendResponse: true, replyClosed: true);
+                finalPeer.ExpectEnd();
+                finalPeer.ExpectClose();
+                
+                NmsConnection connection = await EstablishAnonymousConnection("amqp.traceFrames=true", "", originalPeer, finalPeer);
 
                 Mock<INmsConnectionListener> connectionListener = new Mock<INmsConnectionListener>();
 
                 connectionListener
-                    .Setup(listener => listener.OnConnectionEstablished(It.Is<Uri>(uri => originalUri == uri.ToString())))
+                    .Setup(listener => listener.OnConnectionEstablished(It.Is<Uri>(uri => uri.ToString().StartsWith(originalUri))))
                     .Callback(() => { originalConnected.Set(); });
 
                 connectionListener
-                    .Setup(listener => listener.OnConnectionRestored(It.Is<Uri>(uri => finalUri == uri.ToString())))
+                    .Setup(listener => listener.OnConnectionRestored(It.Is<Uri>(uri => uri.ToString().StartsWith(finalUri))))
                     .Callback(() => { finalConnected.Set(); });
 
                 connection.AddConnectionListener(connectionListener.Object);
@@ -918,31 +930,17 @@ namespace NMS.AMQP.Test.Integration.Async
                 
                 Assert.True(originalConnected.WaitOne(TimeSpan.FromSeconds(5)), "Should connect to original peer");
                 
-                // Post Failover Expectations of FinalPeer
-                finalPeer.ExpectSaslAnonymous();
-                finalPeer.ExpectOpen();
-                finalPeer.ExpectBegin();
-                String dynamicAddress2 = "myTempTopicAddress2";
-                finalPeer.ExpectTempTopicCreationAttach(dynamicAddress2);
-                
-                // Session is recreated after previous temporary destinations are recreated on failover.
-                finalPeer.ExpectBegin();
-                
                 ISession session = await connection.CreateSessionAsync(AcknowledgementMode.AutoAcknowledge);
                 ITemporaryTopic temporaryTopic = await session.CreateTemporaryTopicAsync();
                 
                 Assert.True(finalConnected.WaitOne(TimeSpan.FromSeconds(10)), "Should connect to final peer");
-                
-                // Delete the temporary Topic and close the session.
-                finalPeer.ExpectDetach(expectClosed: true, sendResponse: true, replyClosed: true);
-                finalPeer.ExpectEnd();
                 
                 await temporaryTopic.DeleteAsync();
                 
                 await session.CloseAsync();
                 
                 // Shut it down
-                finalPeer.ExpectClose();
+                
                 await connection.CloseAsync();
                 
                 originalPeer.WaitForAllMatchersToComplete(2000);

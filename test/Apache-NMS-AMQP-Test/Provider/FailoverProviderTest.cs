@@ -241,7 +241,7 @@ namespace NMS.AMQP.Test.Provider
 
             Enumerable.Zip(expectedDelays, actualDelays, (expected, actual) => new { expected, actual })
             .ToList()
-            .ForEach(p => Assert.AreEqual(p.expected, p.actual, 50));
+            .ForEach(p => Assert.AreEqual(p.expected, p.actual, 100));
         }
 
         [Test, Timeout(10000)]
