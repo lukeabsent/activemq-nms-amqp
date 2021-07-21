@@ -1387,7 +1387,7 @@ namespace NMS.AMQP.Test.Integration.Async
                 IMessageConsumer consumer = await session.CreateConsumerAsync(queue);
                 for (int i = 0; i < messageCount; i++)
                 {
-                    IMessage message = await consumer.ReceiveAsync(TimeSpan.FromMilliseconds(500));
+                    IMessage message = await consumer.ReceiveAsync(TimeSpan.FromMilliseconds(1000));
                     Assert.IsNotNull(message);
                     Assert.AreEqual(i, message.Properties.GetInt(TestAmqpPeer.MESSAGE_NUMBER));
                 }

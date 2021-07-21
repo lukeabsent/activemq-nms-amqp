@@ -1386,7 +1386,7 @@ namespace NMS.AMQP.Test.Integration
                 IMessageConsumer consumer = session.CreateConsumer(queue);
                 for (int i = 0; i < messageCount; i++)
                 {
-                    IMessage message = consumer.Receive(TimeSpan.FromMilliseconds(500));
+                    IMessage message = consumer.Receive(TimeSpan.FromMilliseconds(1000));
                     Assert.IsNotNull(message);
                     Assert.AreEqual(i, message.Properties.GetInt(TestAmqpPeer.MESSAGE_NUMBER));
                 }
