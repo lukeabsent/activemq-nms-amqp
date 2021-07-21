@@ -898,7 +898,7 @@ namespace NMS.AMQP.Test.Integration.Async
                 originalPeer.ExpectBegin();
                 string dynamicAddress1 = "myTempTopicAddress";
                 originalPeer.ExpectTempTopicCreationAttach(dynamicAddress1);
-                originalPeer.DropAfterLastMatcher();
+                originalPeer.DropAfterLastMatcher(100); // Give original side some time to process
                 
                 NmsConnection connection = await EstablishAnonymousConnection(originalPeer, finalPeer);
 
